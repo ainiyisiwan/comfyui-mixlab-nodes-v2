@@ -1,0 +1,14 @@
+{
+  "name": "comfyui-mixlab-nodes-v2",
+  "version": "2.0.0",
+  "description": "Modern rewrite of comfyui-mixlab-nodes for ComfyUI v0.21.0+",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint js/"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "peerDependencies": {
+    "comfyui-frontend": ">=1.0.0"
+  }
+}

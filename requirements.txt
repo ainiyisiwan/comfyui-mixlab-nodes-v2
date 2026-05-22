@@ -1,0 +1,5 @@
+# MixLab V2 Dependencies
+# These will be auto-installed by ComfyUI Manager
+
+Pillow>=10.0.0
+numpy>=1.24.0
