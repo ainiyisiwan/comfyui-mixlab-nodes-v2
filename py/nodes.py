@@ -3,14 +3,18 @@ Backend nodes for MixLab V2
 """
 
 import os
+import io
 import json
+import base64
+import urllib.request
+import urllib.parse
 import torch
 import numpy as np
-from PIL import Image, ExifTags
-from PIL.PngImagePlugin import PngInfo
+from PIL import Image, PngImagePlugin
 import folder_paths
 import comfy.utils
 from comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict
+
 
 class LoadImageFromPath(ComfyNodeABC):
     """Load image from absolute path with drag-and-drop support"""
@@ -19,7 +23,7 @@ class LoadImageFromPath(ComfyNodeABC):
     def INPUT_TYPES(cls) -> InputTypeDict:
         return {
             "required": {
-                "image_path": ("STRING", {"default": "", "multiline": False, "tooltip": "Absolute path or URL to image"}),
+                "image_path": ("STRING", {"default": "", "multiline": False, "tooltip": "Absolute path to image file"}),
             },
             "optional": {
                 "width": ("INT", {"default": 0, "min": 0, "max": 16384, "step": 1, "tooltip": "Resize width (0=original)"}),
@@ -35,7 +39,6 @@ class LoadImageFromPath(ComfyNodeABC):
 
     def load_image(self, image_path: str, width: int = 0, height: int = 0):
         if not image_path or not os.path.exists(image_path):
-            # Return empty tensor if path invalid
             empty = torch.zeros(1, 64, 64, 3)
             return (empty, torch.zeros(1, 64, 64), "")
 
@@ -65,7 +68,6 @@ class LoadImageFromPath(ComfyNodeABC):
         img_array = np.array(img).astype(np.float32) / 255.0
 
         if img.mode == "RGBA":
-            # Separate alpha channel as mask
             image = torch.from_numpy(img_array[:, :, :3])[None,]
             mask = torch.from_numpy(img_array[:, :, 3])[None,]
         else:
@@ -75,18 +77,86 @@ class LoadImageFromPath(ComfyNodeABC):
         return (image, mask, metadata)
 
 
+class LoadImageFromURL(ComfyNodeABC):
+    """Load image from URL (http/https)"""
+
+    @classmethod
+    def INPUT_TYPES(cls) -> InputTypeDict:
+        return {
+            "required": {
+                "url": ("STRING", {"default": "https://", "multiline": False, "tooltip": "Image URL (http/https)"}),
+            },
+            "optional": {
+                "timeout": ("INT", {"default": 30, "min": 5, "max": 300, "step": 5, "tooltip": "Download timeout in seconds"}),
+                "user_agent": ("STRING", {"default": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "multiline": False, "tooltip": "User-Agent header"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
+    RETURN_NAMES = ("image", "mask", "metadata")
+    FUNCTION = "load_from_url"
+    CATEGORY = "MixLab V2/Image"
+    DESCRIPTION = "Load image from URL. Supports http/https with custom headers."
+
+    def load_from_url(self, url: str, timeout: int = 30, user_agent: str = ""):
+        if not url or not (url.startswith("http://") or url.startswith("https://")):
+            empty = torch.zeros(1, 64, 64, 3)
+            return (empty, torch.zeros(1, 64, 64), "Invalid URL")
+
+        try:
+            req = urllib.request.Request(url)
+            req.add_header("User-Agent", user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+            req.add_header("Accept", "image/*,*/*")
+
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                data = response.read()
+                img = Image.open(io.BytesIO(data))
+
+                # Convert to RGB/RGBA
+                if img.mode in ("P", "L", "LA"):
+                    img = img.convert("RGBA") if "A" in img.mode or "a" in img.mode else img.convert("RGB")
+                elif img.mode not in ("RGB", "RGBA"):
+                    img = img.convert("RGB")
+
+                # Extract metadata
+                metadata = ""
+                try:
+                    if hasattr(img, 'info') and 'workflow' in img.info:
+                        metadata = img.info['workflow']
+                except:
+                    pass
+
+                # Convert to tensor
+                img_array = np.array(img).astype(np.float32) / 255.0
+
+                if img.mode == "RGBA":
+                    image = torch.from_numpy(img_array[:, :, :3])[None,]
+                    mask = torch.from_numpy(img_array[:, :, 3])[None,]
+                else:
+                    image = torch.from_numpy(img_array)[None,]
+                    mask = torch.zeros((1, img.size[1], img.size[0]), dtype=torch.float32)
+
+                return (image, mask, metadata)
+
+        except Exception as e:
+            print(f"[MixLab V2] Failed to load image from URL: {e}")
+            empty = torch.zeros(1, 64, 64, 3)
+            return (empty, torch.zeros(1, 64, 64), str(e))
+
+
 class LoadImagesToBatch(ComfyNodeABC):
-    """Load multiple images and batch them together"""
+    """Load multiple images from directory and batch them"""
 
     @classmethod
     def INPUT_TYPES(cls) -> InputTypeDict:
         return {
             "required": {
                 "directory": ("STRING", {"default": "", "multiline": False, "tooltip": "Directory containing images"}),
-                "pattern": ("STRING", {"default": "*.png", "tooltip": "File glob pattern"}),
+                "pattern": ("STRING", {"default": "*.png", "tooltip": "File glob pattern (e.g. *.png, *.jpg)"}),
             },
             "optional": {
                 "max_images": ("INT", {"default": 10, "min": 1, "max": 100, "step": 1}),
+                "sort_by": (["name", "date", "size"], {"default": "name"}),
             }
         }
 
@@ -94,16 +164,26 @@ class LoadImagesToBatch(ComfyNodeABC):
     RETURN_NAMES = ("images", "count")
     FUNCTION = "load_batch"
     CATEGORY = "MixLab V2/Image"
-    DESCRIPTION = "Load multiple images from directory as a batch"
+    DESCRIPTION = "Load multiple images from directory as a batch tensor"
 
-    def load_batch(self, directory: str, pattern: str, max_images: int = 10):
+    def load_batch(self, directory: str, pattern: str, max_images: int = 10, sort_by: str = "name"):
         import glob
 
         if not directory or not os.path.exists(directory):
             empty = torch.zeros(1, 64, 64, 3)
             return (empty, 0)
 
-        files = sorted(glob.glob(os.path.join(directory, pattern)))[:max_images]
+        files = glob.glob(os.path.join(directory, pattern))
+
+        # Sort files
+        if sort_by == "date":
+            files.sort(key=lambda x: os.path.getmtime(x))
+        elif sort_by == "size":
+            files.sort(key=lambda x: os.path.getsize(x))
+        else:
+            files.sort()
+
+        files = files[:max_images]
 
         if not files:
             empty = torch.zeros(1, 64, 64, 3)
@@ -111,12 +191,20 @@ class LoadImagesToBatch(ComfyNodeABC):
 
         images = []
         for f in files:
-            img = Image.open(f).convert("RGB")
-            img_array = np.array(img).astype(np.float32) / 255.0
-            images.append(torch.from_numpy(img_array))
+            try:
+                img = Image.open(f).convert("RGB")
+                img_array = np.array(img).astype(np.float32) / 255.0
+                images.append(torch.from_numpy(img_array))
+            except Exception as e:
+                print(f"[MixLab V2] Skip invalid image: {f} - {e}")
+                continue
+
+        if not images:
+            empty = torch.zeros(1, 64, 64, 3)
+            return (empty, 0)
 
         batch = torch.stack(images, dim=0)
-        return (batch, len(files))
+        return (batch, len(images))
 
 
 class ExtractWorkflowFromImage(ComfyNodeABC):
@@ -134,11 +222,11 @@ class ExtractWorkflowFromImage(ComfyNodeABC):
     RETURN_NAMES = ("workflow_json", "prompt_json")
     FUNCTION = "extract"
     CATEGORY = "MixLab V2/Workflow"
-    DESCRIPTION = "Extract embedded workflow and prompt from generated image"
+    DESCRIPTION = "Extract embedded ComfyUI workflow and prompt from generated image"
 
     def extract(self, image):
-        # This node works with the frontend extension to get metadata
-        # The actual extraction happens in JS, this is a passthrough
+        # Frontend extension handles actual extraction via server API
+        # This node serves as a passthrough trigger
         return ("", "")
 
 
@@ -149,35 +237,38 @@ class TextImage(ComfyNodeABC):
     def INPUT_TYPES(cls) -> InputTypeDict:
         return {
             "required": {
-                "text": ("STRING", {"default": "Hello", "multiline": True}),
-                "width": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64}),
-                "height": ("INT", {"default": 64, "min": 64, "max": 2048, "step": 64}),
+                "text": ("STRING", {"default": "Hello World", "multiline": True}),
+                "width": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 64}),
+                "height": ("INT", {"default": 64, "min": 64, "max": 4096, "step": 64}),
                 "font_size": ("INT", {"default": 32, "min": 8, "max": 256, "step": 1}),
             },
             "optional": {
-                "font_color": ("STRING", {"default": "#FFFFFF", "tooltip": "Hex color"}),
-                "background_color": ("STRING", {"default": "#000000", "tooltip": "Hex color"}),
+                "font_color": ("STRING", {"default": "#FFFFFF", "tooltip": "Hex color code"}),
+                "background_color": ("STRING", {"default": "#000000", "tooltip": "Hex color code"}),
+                "align": (["left", "center", "right"], {"default": "center"}),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "render_text"
     CATEGORY = "MixLab V2/Image"
-    DESCRIPTION = "Render text string as an image"
+    DESCRIPTION = "Render text string as an RGB image"
 
     def render_text(self, text: str, width: int, height: int, font_size: int, 
-                    font_color: str = "#FFFFFF", background_color: str = "#000000"):
+                    font_color: str = "#FFFFFF", background_color: str = "#000000",
+                    align: str = "center"):
         from PIL import Image, ImageDraw, ImageFont
 
         img = Image.new("RGB", (width, height), background_color)
         draw = ImageDraw.Draw(img)
 
-        # Try to load a font, fallback to default
+        # Load font
         font = None
         font_paths = [
-            os.path.join(os.path.dirname(__file__), "../assets/fonts", "NotoSansCJK-Regular.ttc"),
+            os.path.join(os.path.dirname(__file__), "..", "assets", "fonts", "NotoSansCJK-Regular.ttc"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/System/Library/Fonts/Helvetica.ttc",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
         ]
 
         for fp in font_paths:
@@ -191,11 +282,18 @@ class TextImage(ComfyNodeABC):
         if font is None:
             font = ImageFont.load_default()
 
-        # Calculate text position (centered)
+        # Calculate text position
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
-        x = (width - text_width) // 2
+
+        if align == "center":
+            x = (width - text_width) // 2
+        elif align == "right":
+            x = width - text_width
+        else:
+            x = 0
+
         y = (height - text_height) // 2
 
         draw.text((x, y), text, fill=font_color, font=font)
@@ -224,10 +322,9 @@ class ImageCompositeMasked(ComfyNodeABC):
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "composite"
     CATEGORY = "MixLab V2/Image"
-    DESCRIPTION = "Overlay foreground onto background using mask"
+    DESCRIPTION = "Overlay foreground onto background using alpha mask"
 
     def composite(self, background, foreground, mask, x, y):
-        # Simple composite implementation
         bg = background[0].cpu().numpy()
         fg = foreground[0].cpu().numpy()
         m = mask[0].cpu().numpy()
@@ -235,10 +332,8 @@ class ImageCompositeMasked(ComfyNodeABC):
         h, w = bg.shape[:2]
         fh, fw = fg.shape[:2]
 
-        # Create output
         result = bg.copy()
 
-        # Calculate valid region
         x1, y1 = max(0, x), max(0, y)
         x2, y2 = min(w, x + fw), min(h, y + fh)
 
@@ -248,8 +343,6 @@ class ImageCompositeMasked(ComfyNodeABC):
 
             fg_region = fg[fy1:fy2, fx1:fx2]
             m_region = m[fy1:fy2, fx1:fx2]
-
-            # Expand mask dimensions for broadcasting
             m_region = np.expand_dims(m_region, axis=-1)
 
             result[y1:y2, x1:x2] = fg_region * m_region + result[y1:y2, x1:x2] * (1 - m_region)
@@ -270,6 +363,7 @@ class SaveImageWithWorkflow(ComfyNodeABC):
             },
             "optional": {
                 "embed_workflow": ("BOOLEAN", {"default": True}),
+                "compress_level": ("INT", {"default": 4, "min": 0, "max": 9}),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -283,13 +377,13 @@ class SaveImageWithWorkflow(ComfyNodeABC):
     CATEGORY = "MixLab V2/Image"
     DESCRIPTION = "Save image with embedded workflow metadata for drag-and-drop loading"
 
-    def save(self, images, filename_prefix="MixLab", embed_workflow=True, prompt=None, extra_pnginfo=None):
+    def save(self, images, filename_prefix="MixLab", embed_workflow=True, compress_level=4, prompt=None, extra_pnginfo=None):
         output_dir = folder_paths.get_output_directory()
 
         for idx, image in enumerate(images):
             img = Image.fromarray(np.clip(255. * image.cpu().numpy(), 0, 255).astype(np.uint8))
 
-            metadata = PngInfo()
+            metadata = PngImagePlugin.PngInfo()
             if embed_workflow and extra_pnginfo:
                 if "workflow" in extra_pnginfo:
                     metadata.add_text("workflow", json.dumps(extra_pnginfo["workflow"]))
@@ -298,14 +392,15 @@ class SaveImageWithWorkflow(ComfyNodeABC):
 
             filename = f"{filename_prefix}_{idx:05d}.png"
             filepath = os.path.join(output_dir, filename)
-            img.save(filepath, pnginfo=metadata)
+            img.save(filepath, pnginfo=metadata, compress_level=compress_level)
 
         return {}
 
 
-# Node registration mappings
+# Node registration
 NODE_CLASS_MAPPINGS = {
     "LoadImageFromPath_MixLabV2": LoadImageFromPath,
+    "LoadImageFromURL_MixLabV2": LoadImageFromURL,
     "LoadImagesToBatch_MixLabV2": LoadImagesToBatch,
     "ExtractWorkflowFromImage_MixLabV2": ExtractWorkflowFromImage,
     "TextImage_MixLabV2": TextImage,
@@ -315,6 +410,7 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromPath_MixLabV2": "📁 Load Image From Path (MixLab V2)",
+    "LoadImageFromURL_MixLabV2": "🌐 Load Image From URL (MixLab V2)",
     "LoadImagesToBatch_MixLabV2": "📂 Load Images To Batch (MixLab V2)",
     "ExtractWorkflowFromImage_MixLabV2": "🔍 Extract Workflow From Image (MixLab V2)",
     "TextImage_MixLabV2": "📝 Text To Image (MixLab V2)",

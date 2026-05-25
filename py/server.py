@@ -25,7 +25,6 @@ async def extract_metadata(request):
         if not file_field:
             return web.json_response({"error": "No file provided"}, status=400)
 
-        # Read uploaded file
         content = file_field.file.read()
         from io import BytesIO
         img = Image.open(BytesIO(content))
@@ -46,20 +45,6 @@ async def extract_metadata(request):
                 except:
                     metadata['prompt'] = img.info['prompt']
 
-        # Try EXIF for other formats
-        try:
-            exif = img._getexif()
-            if exif:
-                for tag_id, value in exif.items():
-                    tag = Image.ExifTags.TAGS.get(tag_id, tag_id)
-                    if 'UserComment' in str(tag) or 'ImageDescription' in str(tag):
-                        try:
-                            metadata['exif_workflow'] = json.loads(value)
-                        except:
-                            metadata['exif_comment'] = str(value)
-        except:
-            pass
-
         return web.json_response({
             "success": True,
             "format": img.format,
@@ -74,12 +59,14 @@ async def extract_metadata(request):
 async def list_inputs(request):
     """List files in ComfyUI input directory"""
     try:
-        input_dir = request.app["input_directory"]
-        files = []
+        input_dir = request.app.get("input_directory", "")
+        if not input_dir or not os.path.exists(input_dir):
+            return web.json_response({"files": []})
 
+        files = []
         for root, dirs, filenames in os.walk(input_dir):
             for fname in filenames:
-                if fname.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                if fname.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp')):
                     rel_path = os.path.relpath(os.path.join(root, fname), input_dir)
                     files.append(rel_path)
 
@@ -87,7 +74,7 @@ async def list_inputs(request):
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
-def add_routes(app, input_directory):
+def add_routes(app, input_directory=""):
     """Register routes with ComfyUI server"""
     app.router.add_routes(routes)
     app["input_directory"] = input_directory
