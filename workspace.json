@@ -1,0 +1,33 @@
+{
+    "name": "comfyui-mixlab",
+    "version": "1.0.0",
+    "description": "一个简单的ComfyUI插件，支持图片拖放和URL加载功能",
+    "author": "MixLabPro",
+    "license": "MIT",
+    "repository": "https://github.com/MixLabPro/comfyui-mixlab",
+    "nodes": [
+        {
+            "name": "MixlabImageUpload",
+            "display_name": "图片上传",
+            "category": "Mixlab/图片"
+        },
+        {
+            "name": "MixlabLoadImageFromURL",
+            "display_name": "从URL加载图片",
+            "category": "Mixlab/图片"
+        },
+        {
+            "name": "MixlabLoadImageFromPath",
+            "display_name": "从路径加载图片",
+            "category": "Mixlab/图片"
+        },
+        {
+            "name": "MixlabLoadWorkflowImage",
+            "display_name": "加载工作流图片",
+            "category": "Mixlab/图片"
+        }
+    ],
+    "dependencies": {
+        "python": ["requests", "pillow"]
+    }
+}

@@ -1,6 +1,0 @@
-{
-  "name": "comfyui-mixlab-nodes-v2",
-  "version": "2.0.0",
-  "description": "Modern rewrite of MixLab nodes for ComfyUI v0.21.0+",
-  "type": "module"
-}

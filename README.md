@@ -1,59 +1,131 @@
-# ComfyUI MixLab Nodes V2
+# ComfyUI Mixlab Nodes
 
-A modern, fully-compatible rewrite of [comfyui-mixlab-nodes](https://github.com/MixLabPro/comfyui-mixlab-nodes) that works with **ComfyUI v0.21.0+** and the latest frontend architecture.
+一个简洁实用的 ComfyUI 插件，提供图片拖放、URL 加载、图像处理等功能。
 
-> The original MixLab plugin has a known bug where drag-and-drop of images and workflows stopped working after ComfyUI v0.21.0. This V2 version fixes all compatibility issues.
+## 功能特性
 
----
+### 📁 图片加载
+- **图片上传** - 支持拖放图片到画布
+- **从URL加载图片** - 通过远程URL加载图片
+- **从路径加载图片** - 从本地文件路径加载图片
+- **加载工作流图片** - 加载带有元数据的工作流图片
+- **从文件夹加载图片** - 批量加载文件夹中的图片
 
-## Features
+### 📁 图像处理
+- **调整图片大小** - 支持多种插值模式
+- **裁剪图片** - 指定坐标和尺寸裁剪
+- **翻转图片** - 水平/垂直/双向翻转
+- **旋转图片** - 任意角度旋转
+- **调整图片参数** - 亮度、对比度、饱和度、锐度
+- **模糊图片** - 高斯模糊、盒式模糊、中值模糊
+- **图片合成** - 前景+背景合成，支持遮罩
 
-| Feature | Description |
-|---------|-------------|
-| Drag & Drop Images | Drop images directly onto nodes or the canvas |
-| Drag & Drop Workflows | Drop PNG/WebP with embedded workflow metadata |
-| Load Image from URL | Load images directly from http/https URLs |
-| Batch Image Loading | Load entire folders of images as batched tensors |
-| Metadata Extraction | Extract embedded ComfyUI workflow/prompt from images |
-| Text to Image | Render text strings as images for prompts/watermarks |
-| Masked Composite | Overlay images with alpha mask blending |
-| Save + Workflow | Save images with embedded workflow metadata |
+### 📁 批处理
+- **图片批次合并** - 将多张图片合并为一个批次
+- **图片批次拆分** - 将批次拆分为单张图片
 
----
+### 📁 文本处理
+- **提示词文本** - 多行文本输入
+- **提示词合并** - 合并两个文本
 
-## Installation
+### 📁 输出与工具
+- **保存图片到路径** - 保存到指定路径
+- **预览图片** - 在UI中预览图片
+- **图片信息** - 获取图片尺寸、批次大小等信息
+- **颜色选择器** - HEX颜色转RGB值
 
-### Method 1: ComfyUI Manager (Recommended)
-1. Open ComfyUI Manager
-2. Search for `MixLab V2`
-3. Click Install
-4. Restart ComfyUI
+## 安装方法
 
-### Method 2: Git Clone
+### 方法一：通过 ComfyUI Manager 安装
+1. 打开 ComfyUI
+2. 点击侧边栏的 "Manager" 按钮
+3. 点击 "Install Custom Nodes"
+4. 搜索 "comfyui-mixlab"
+5. 点击安装按钮
+6. 重启 ComfyUI
+
+### 方法二：手动安装
 ```bash
-cd ComfyUI/custom_nodes
-git clone https://github.com/YOUR_USERNAME/comfyui-mixlab-nodes-v2.git
+cd path/to/your/ComfyUI/custom_nodes
+git clone https://github.com/MixLabPro/comfyui-mixlab.git
 ```
 
----
+### 依赖安装
+```bash
+pip install requests pillow
+```
 
-## Nodes
+## 使用方法
 
-### Image Loading
-- **Load Image From Path** - Load single image with drag-and-drop
-- **Load Image From URL** - Load image from http/https URL
-- **Load Images To Batch** - Load directory of images as batch tensor
+### 拖放图片
+直接将图片文件拖放到 ComfyUI 画布上，会自动创建对应的节点。
 
-### Workflow Tools
-- **Extract Workflow From Image** - Extract embedded JSON from generated images
-- **Save Image + Workflow** - Save with embedded metadata for sharing
+### 加载远程图片
+1. 添加 "从URL加载图片" 节点
+2. 在 URL 输入框中填入图片链接
+3. 调整超时时间（可选）
+4. 连接输出到其他节点
 
-### Image Processing
-- **Text To Image** - Render text as RGB image
-- **Image Composite Masked** - Blend foreground onto background using mask
+### 批量加载图片
+1. 添加 "从文件夹加载图片" 节点
+2. 设置输入路径
+3. 设置起始索引和最大加载数量
+4. 节点会输出图像、遮罩、索引、文件名、尺寸等信息
 
----
+## 节点列表
 
-## License
+| 分类 | 节点名称 | 功能说明 |
+|------|---------|---------|
+| 图片 | 图片上传 | 基础图片上传，分离RGBA通道 |
+| 图片 | 从URL加载图片 | 通过URL加载远程图片 |
+| 图片 | 从路径加载图片 | 从本地路径加载图片 |
+| 图片 | 加载工作流图片 | 加载工作流图片，支持元数据 |
+| 图像处理 | 调整图片大小 | 支持多种插值模式 |
+| 图像处理 | 裁剪图片 | 指定坐标和尺寸裁剪 |
+| 图像处理 | 翻转图片 | 水平/垂直/双向翻转 |
+| 图像处理 | 旋转图片 | 任意角度旋转 |
+| 图像处理 | 调整图片参数 | 亮度、对比度、饱和度、锐度 |
+| 图像处理 | 模糊图片 | 高斯模糊、盒式模糊、中值模糊 |
+| 图像处理 | 图片合成 | 前景+背景合成 |
+| 批处理 | 从文件夹加载图片 | 批量加载文件夹中的图片 |
+| 批处理 | 图片批次合并 | 合并多张图片为批次 |
+| 批处理 | 图片批次拆分 | 拆分批次为单张图片 |
+| 文本 | 提示词文本 | 多行文本输入 |
+| 文本 | 提示词合并 | 合并两个文本 |
+| 输出 | 保存图片到路径 | 保存到指定路径 |
+| 工具 | 图片信息 | 获取图片尺寸信息 |
+| 工具 | 颜色选择器 | HEX颜色转RGB值 |
+
+## 项目结构
+
+```
+comfyui-mixlab/
+├── __init__.py              # 插件入口
+├── nodes/
+│   ├── __init__.py          # 节点导出
+│   └── mixlab_nodes.py      # 核心节点实现
+├── js/
+│   └── mixlab.js            # 前端拖放功能
+├── workspace.json           # 插件配置
+├── requirements.txt         # 依赖声明
+└── README.md                # 项目说明
+```
+
+## 注意事项
+
+1. 确保安装了 `requests` 和 `pillow` 依赖
+2. URL 加载功能需要网络连接
+3. 从文件夹加载图片时，请确保路径正确且有读取权限
+4. 所有节点均已适配最新版本的 ComfyUI
+
+## 许可证
 
 MIT License
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+*Made with ❤️ by MixLabPro*

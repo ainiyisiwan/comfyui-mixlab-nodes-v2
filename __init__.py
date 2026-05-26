@@ -1,14 +1,17 @@
-"""
-ComfyUI MixLab Nodes V2
-A modern rewrite of comfyui-mixlab-nodes, fully compatible with ComfyUI v0.21.0+
-Supports drag-and-drop images/workflows, URL image loading, batch loading, and modern frontend APIs.
-"""
-
 import os
-from .py.nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+import sys
 
-WEB_DIRECTORY = os.path.join(os.path.dirname(__file__), "js")
+# 添加模块路径
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 导入节点
+from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+
+# 注册节点
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 
-print("[MixLab V2] Loaded successfully. Frontend extensions registered.")
+# 定义JS扩展
+WEB_DIRECTORY = "./js"
+
+# 节点类别
+CATEGORY = "Mixlab"
